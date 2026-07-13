@@ -26,8 +26,6 @@ interface IExcelUploadState {
     message: { type: MessageBarType; text: string } | null;
 }
 
-const REQUIRED_HEADERS = ["Customer Name", "Customer ID"];
-
 const HEADER_TO_KEY: Record<string, string> = columnsConfig.reduce((map, col) => {
     map[col.name.trim().toLowerCase()] = (col.fieldName as string) || (col.key as string);
     return map;
