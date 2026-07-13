@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "customer-mapping-list-search-client-side-solution",
+    "id": "e863b13b-8ade-4a8e-80b7-f6e544fb0c0b",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.20.0"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "CustomerMappingListSearch description"
+      },
+      "longDescription": {
+        "default": "CustomerMappingListSearch description"
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "customer-mapping-list-search Feature",
+        "description": "The feature that activates elements of the customer-mapping-list-search solution.",
+        "id": "7261d472-ea34-4f79-89e6-52ab22f760b3",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/customer-mapping-list-search.sppkg"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "18.18.2",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.24.0"
+    },
+    "version": "1.20.0",
+    "libraryName": "customer-mapping-list-search",
+    "libraryId": "e863b13b-8ade-4a8e-80b7-f6e544fb0c0b",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "CustomerMappingListSearch",
+    "solutionShortDescription": "CustomerMappingListSearch description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}

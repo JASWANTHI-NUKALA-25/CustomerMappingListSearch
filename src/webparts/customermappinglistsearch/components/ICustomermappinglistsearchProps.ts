@@ -1,0 +1,11 @@
+import { WebPartContext } from "@microsoft/sp-webpart-base";
+
+export interface ICustomermappinglistsearchProps {
+  description: string;
+  isDarkTheme: boolean;
+  environmentMessage: string;
+  hasTeamsContext: boolean;
+  userDisplayName: string;
+  context:WebPartContext
+
+}
