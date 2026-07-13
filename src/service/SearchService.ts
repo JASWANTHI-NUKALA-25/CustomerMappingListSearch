@@ -47,85 +47,24 @@ export class SearchService {
 
 async loadColumns(): Promise<IListColumn[]> {
         try {
-            
-            const columns = [
-                
-                {
-                    key: "Title",
-                    text: "Customer Name",
-                    fieldType: "Text",
-                    lookupListId: undefined,
-                    lookupField: undefined
-                },
 
-                {
-                    key: "field_1",
-                    text: "Customer ID",
-                    fieldType: "Text",
-                    lookupListId: undefined,
-                    lookupField: undefined
-                },
-                
-                // {
-                //     key: "DocType",
-                //     text: "Document Type",
-                //     fieldType: "Lookup",
-                //     lookupListId: "f8b1c0d2-3e4f-4a5b-8c6d-7e8f9a0b1c2d", // Replace with actual DocType list ID
-                //     lookupField: "Title"
-                // },
-
-                // {
-                //     key: "Status",
-                //     text: "Status",
-                //     fieldType: "Choice",
-                //     lookupListId: undefined,
-                //     lookupField: undefined
-                // },
-                // {
-                //     key: "RoleMemberEmail",
-                //     text: "Rolemember",
-                //     fieldType: "Note",
-                //     lookupListId: undefined,
-                //     lookupField: undefined
-                // },
-                // {
-                //     key: "Supplier",
-                //     text: "Supplier",
-                //     fieldType: "Note",
-                //     lookupListId: undefined,
-                //     lookupField: undefined
-                // },
-                // {
-                //     key: "BU",//Inter name
-                //     text: "Business Unit",//Display Name
-                //     fieldType: "Text",
-                //     lookupListId: undefined,
-                //     lookupField: undefined
-                // },
-                // {
-                //     key: "PartNumber",
-                //     text: "Part Number",
-                //     fieldType: "Note",
-                //     lookupListId: undefined,
-                //     lookupField: undefined
-                // },
-                // {
-                //     key: "CreatedBy",
-                //     text: "Created By",
-                //     fieldType: "User",
-                //     lookupListId: undefined,
-                //     lookupField: undefined
-                // },
-            ]
-
-            // Manually add the CreatedBy (Author) field
-            // columns.push({
-            //     key: "CreatedBy",
-            //     text: "Created By",
-            //     fieldType: "User",
-            //     lookupListId: null,
-            //     lookupField: null
-            // });
+            const columns: IListColumn[] = [
+                { key: "Title", text: "Customer Name", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_1", text: "Customer ID", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_2", text: "Region", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_3", text: "Americas Lead", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_4", text: "Americas Director", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_5", text: "Americas G/KAM", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_6", text: "Americas Sales agent", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_7", text: "EMEA Lead", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_8", text: "EMEA Director", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_9", text: "EMEA G/KAM", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_10", text: "EMEA Sales agent", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_11", text: "APAC Lead", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_12", text: "APAC Director", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_13", text: "APAC G/KAM", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+                { key: "field_14", text: "APAC Sales agent", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+            ];
 
             return columns;
         } catch (err) {
@@ -230,8 +169,6 @@ async handleStandardSearch(filters: { columnName: string; query: string }[]): Pr
             searchUrl += `&$expand=${expand}`;
         }
 
-        console.log('Search request URL:', searchUrl);
-
         const response: SPHttpClientResponse = await this.context.spHttpClient.get(searchUrl, SPHttpClient.configurations.v1);
         const data = await response.json();
 
@@ -256,5 +193,79 @@ async handleStandardSearch(filters: { columnName: string; query: string }[]): Pr
     }
 }
 
+    private entityTypeFullName: string | undefined;
+
+    private async getEntityTypeFullName(): Promise<string> {
+        if (this.entityTypeFullName) return this.entityTypeFullName;
+
+        const url = `${this.context.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')?$select=ListItemEntityTypeFullName`;
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) {
+            throw new Error(`Failed to resolve list metadata (status ${response.status})`);
+        }
+        const data = await response.json();
+        const entityType: string | undefined = data.ListItemEntityTypeFullName;
+        if (!entityType) {
+            throw new Error("Could not resolve the list's entity type");
+        }
+        this.entityTypeFullName = entityType;
+        return entityType;
+    }
+
+    private extractErrorMessage(errorText: string): string {
+        try {
+            const parsed = JSON.parse(errorText);
+            return parsed?.error?.message?.value || parsed?.["odata.error"]?.message?.value || errorText;
+        } catch (e) {
+            return errorText;
+        }
+    }
+
+    async createItem(item: Record<string, string>): Promise<void> {
+        const entityType = await this.getEntityTypeFullName();
+        const url = `${this.context.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items`;
+        const body = JSON.stringify({ "__metadata": { type: entityType }, ...item });
+
+        const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+            headers: {
+                "Accept": "application/json;odata=verbose",
+                "Content-type": "application/json;odata=verbose",
+                "odata-version": ""
+            },
+            body
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(this.extractErrorMessage(errorText) || `Request failed with status ${response.status}`);
+        }
+    }
+
+    async bulkCreateItems(entries: { row: number; data: Record<string, string> }[]): Promise<{ success: number; failed: { row: number; error: string }[] }> {
+        const failed: { row: number; error: string }[] = [];
+        let success = 0;
+        const concurrency = 5;
+
+        for (let i = 0; i < entries.length; i += concurrency) {
+            const chunk = entries.slice(i, i + concurrency);
+            const outcomes = await Promise.all(
+                chunk.map(entry =>
+                    this.createItem(entry.data)
+                        .then(() => ({ ok: true, row: entry.row, error: "" }))
+                        .catch(err => ({ ok: false, row: entry.row, error: err.message }))
+                )
+            );
+
+            outcomes.forEach(outcome => {
+                if (outcome.ok) {
+                    success++;
+                } else {
+                    failed.push({ row: outcome.row, error: outcome.error });
+                }
+            });
+        }
+
+        return { success, failed };
+    }
 
 }

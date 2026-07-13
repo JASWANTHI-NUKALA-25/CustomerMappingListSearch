@@ -11,14 +11,17 @@ import {
     MessageBar,
     MessageBarType,
     DefaultButton,
-    // IconButton,
-    Stack
+    IconButton,
+    Stack,
+    Text,
+    Separator
 } from "@fluentui/react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { SearchService } from "../service/SearchService";
 import { columnsConfig } from "../constants/ColumnsConfig";
 import { IListColumn } from "../interfaces/IListColumn";
 import { ISearchResults } from "../interfaces/ISearchResults.ts";
+import ExcelUploadComponent from "./ExcelUploadComponent";
 
 
 interface ISearchState {
@@ -169,6 +172,13 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
             selectedColumn: ""
         });
     };
+    handleQueryKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        const { rows } = this.state;
+        if (event.key === "Enter" && !rows.some(row => !row.columnKey || !row.query)) {
+            this.handleSearch();
+        }
+    };
+
     render() {
         const { columns, rows, results, loading, error } = this.state;
         const columnsWithAction = columnsConfig.map((column) => {
@@ -196,89 +206,127 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
             return column;
         });
 
+        const cardStyle: React.CSSProperties = {
+            maxWidth: 1200,
+            margin: "0 auto",
+            padding: 24,
+            background: "#ffffff",
+            borderRadius: 4,
+            boxShadow: "0 1.6px 3.6px rgba(0,0,0,0.1), 0 0.3px 0.9px rgba(0,0,0,0.08)"
+        };
+
         return (
-            <div className="search-container" style={{ padding: 20 }}>
-                {/* Dynamic Rows */}
-                {rows.map((row, index) => (
-                    <Stack horizontal tokens={{ childrenGap: 10 }} style={{ margin: 14 }} verticalAlign="center" key={index}>
-                        <Dropdown
-                            placeholder="Select Option"
-                            options={columns.map(c => ({ key: c.key, text: c.text }))}
-                            selectedKey={row.columnKey}
-                            onChange={(e, option) => this.handleColumnChange(index, e, option)}
-                            styles={{ dropdown: { width: 200 } }}
-                        />
+            <div style={{ padding: 20 }}>
+                <div style={cardStyle}>
+                    <Text variant="xLarge" block styles={{ root: { fontWeight: 600, marginBottom: 4 } }}>
+                        Customer Mapping List Search
+                    </Text>
+                    <Text variant="medium" block styles={{ root: { color: "#605e5c", marginBottom: 16 } }}>
+                        Search existing customer mapping records or bulk-upload new ones from Excel.
+                    </Text>
 
-                        <TextField
-                            // placeholder="Enter Customer Name or Customer ID"
-                            placeholder={
-                                row.columnKey === "Title"
-                                    ? "Enter Customer Name"
-                                    : row.columnKey === "field_1"
-                                        ? "Enter Customer ID"
-                                        : "Enter Customer Name or Customer ID"
-                            }
-                            value={row.query}
-                            onChange={(e, newValue) => this.handleQueryChange(index, e, newValue)}
-                            disabled={!row.columnKey}
-                            styles={{ root: { width: 250 } }}
-                        />
-
-                        {/* <IconButton
-                            iconProps={{ iconName: "Add" }}{() => this.removeRow(index)}
-                            disabled={rows.length <= 1} // Disable Remove for the last row
-                        /> */}
-                        {/* <PrimaryButton
-
-                            text="Remove"
-                            onClick={() => this.removeRow(index)}
-                            disabled={rows.length <= 1} // Disable Remove for the last row
-                        // styles={{ root: { marginTop: 15 } }}
-                        /> */}
-
-                        <PrimaryButton
-                            text="Search"
-                            onClick={this.handleSearch}
-                            disabled={rows.some(row => !row.columnKey || !row.query)} // Disable if any row is incomplete
-                        // styles={{ root: { marginTop: 15 } }}
-                        />
-                        <DefaultButton
-                            text="Clear"
-                            onClick={this.handleClear}
-                            styles={{ root: { marginLeft: 5 } }}
-                        />
-                    </Stack>
-                ))}
-
-                {/* Search Button */}
-
-
-                {/* Loading Indicator */}
-                {loading && <Spinner label="Searching..." />}
-
-                {/* Error Message */}
-                {error && (
-                    <MessageBar messageBarType={MessageBarType.error} styles={{ root: { marginBottom: 15 } }}>
-                        {error}
-                    </MessageBar>
-                )}
-
-                {/* Search Results */}
-                {results.length > 0 && (
-                    <DetailsList
-                        items={results}
-                        columns={columnsWithAction}
-                        isHeaderVisible={true}
-                        styles={{ root: { marginTop: 20 } }}
+                    {/* Excel Upload */}
+                    <ExcelUploadComponent
+                        context={this.props.context}
+                        listName={this.props.listName}
                     />
-                )}
 
-                {/* No Results Message */}
-                {!loading && !error && results.length === 0 && (
-                    <MessageBar styles={{ root: { marginTop: 15 } }}>
-                        No results found
-                    </MessageBar>
-                )}
+                    <Separator styles={{ root: { margin: "16px 0" } }} />
+
+                    {/* Search Filters */}
+                    <Stack tokens={{ childrenGap: 12 }}>
+                        {rows.map((row, index) => {
+                            const selectedColumnInfo = columns.find(c => c.key === row.columnKey);
+                            return (
+                                <Stack
+                                    horizontal
+                                    wrap
+                                    tokens={{ childrenGap: 10 }}
+                                    verticalAlign="center"
+                                    key={index}
+                                >
+                                    <Dropdown
+                                        placeholder="Select Option"
+                                        options={columns.map(c => ({ key: c.key, text: c.text }))}
+                                        selectedKey={row.columnKey}
+                                        onChange={(e, option) => this.handleColumnChange(index, e, option)}
+                                        styles={{ dropdown: { width: 220 } }}
+                                    />
+
+                                    <TextField
+                                        placeholder={
+                                            selectedColumnInfo
+                                                ? `Enter ${selectedColumnInfo.text}`
+                                                : "Select a field first"
+                                        }
+                                        value={row.query}
+                                        onChange={(e, newValue) => this.handleQueryChange(index, e, newValue)}
+                                        onKeyPress={this.handleQueryKeyPress}
+                                        disabled={!row.columnKey}
+                                        styles={{ root: { width: 260 } }}
+                                    />
+
+                                    <IconButton
+                                        iconProps={{ iconName: "Remove" }}
+                                        title="Remove this filter"
+                                        ariaLabel="Remove this filter"
+                                        onClick={() => this.removeRow(index)}
+                                        disabled={rows.length <= 1}
+                                    />
+
+                                    {index === rows.length - 1 && (
+                                        <IconButton
+                                            iconProps={{ iconName: "Add" }}
+                                            title="Add another filter"
+                                            ariaLabel="Add another filter"
+                                            onClick={this.addRow}
+                                        />
+                                    )}
+                                </Stack>
+                            );
+                        })}
+
+                        <Stack horizontal tokens={{ childrenGap: 10 }}>
+                            <PrimaryButton
+                                text="Search"
+                                onClick={this.handleSearch}
+                                disabled={rows.some(row => !row.columnKey || !row.query)}
+                            />
+                            <DefaultButton
+                                text="Clear"
+                                onClick={this.handleClear}
+                            />
+                        </Stack>
+                    </Stack>
+
+                    {/* Loading Indicator */}
+                    {loading && <Spinner label="Searching..." styles={{ root: { marginTop: 16 } }} />}
+
+                    {/* Error Message */}
+                    {error && (
+                        <MessageBar messageBarType={MessageBarType.error} styles={{ root: { marginTop: 16 } }}>
+                            {error}
+                        </MessageBar>
+                    )}
+
+                    {/* Search Results */}
+                    {results.length > 0 && (
+                        <div style={{ marginTop: 20, overflowX: "auto" }}>
+                            <DetailsList
+                                items={results}
+                                columns={columnsWithAction}
+                                isHeaderVisible={true}
+                            />
+                        </div>
+                    )}
+
+                    {/* No Results Message */}
+                    {!loading && !error && results.length === 0 && (
+                        <MessageBar styles={{ root: { marginTop: 16 } }}>
+                            No results found
+                        </MessageBar>
+                    )}
+                </div>
             </div>
         );
     }
