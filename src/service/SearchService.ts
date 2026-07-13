@@ -51,19 +51,6 @@ async loadColumns(): Promise<IListColumn[]> {
             const columns: IListColumn[] = [
                 { key: "Title", text: "Customer Name", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
                 { key: "field_1", text: "Customer ID", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_2", text: "Region", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_3", text: "Americas Lead", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_4", text: "Americas Director", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_5", text: "Americas G/KAM", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_6", text: "Americas Sales agent", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_7", text: "EMEA Lead", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_8", text: "EMEA Director", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_9", text: "EMEA G/KAM", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_10", text: "EMEA Sales agent", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_11", text: "APAC Lead", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_12", text: "APAC Director", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_13", text: "APAC G/KAM", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
-                { key: "field_14", text: "APAC Sales agent", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
             ];
 
             return columns;

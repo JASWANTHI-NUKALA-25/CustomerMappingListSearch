@@ -7,6 +7,8 @@ import {
     TextField,
     PrimaryButton,
     DetailsList,
+    IDetailsListProps,
+    DetailsListLayoutMode,
     Spinner,
     MessageBar,
     MessageBarType,
@@ -14,7 +16,11 @@ import {
     IconButton,
     Stack,
     Text,
-    Separator
+    Separator,
+    ScrollablePane,
+    ScrollbarVisibility,
+    Sticky,
+    StickyPositionType
 } from "@fluentui/react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { SearchService } from "../service/SearchService";
@@ -179,6 +185,15 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
         }
     };
 
+    onRenderDetailsHeader: IDetailsListProps["onRenderDetailsHeader"] = (props, defaultRender) => {
+        if (!props || !defaultRender) return null;
+        return (
+            <Sticky stickyPosition={StickyPositionType.Header} isScrollSynced>
+                {defaultRender({ ...props })}
+            </Sticky>
+        );
+    };
+
     render() {
         const { columns, rows, results, loading, error } = this.state;
         const columnsWithAction = columnsConfig.map((column) => {
@@ -311,12 +326,16 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
 
                     {/* Search Results */}
                     {results.length > 0 && (
-                        <div style={{ marginTop: 20, overflowX: "auto" }}>
-                            <DetailsList
-                                items={results}
-                                columns={columnsWithAction}
-                                isHeaderVisible={true}
-                            />
+                        <div style={{ marginTop: 20, position: "relative", height: "60vh" }}>
+                            <ScrollablePane scrollbarVisibility={ScrollbarVisibility.auto}>
+                                <DetailsList
+                                    items={results}
+                                    columns={columnsWithAction}
+                                    isHeaderVisible={true}
+                                    layoutMode={DetailsListLayoutMode.fixedColumns}
+                                    onRenderDetailsHeader={this.onRenderDetailsHeader}
+                                />
+                            </ScrollablePane>
                         </div>
                     )}
 
