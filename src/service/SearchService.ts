@@ -181,6 +181,25 @@ async handleStandardSearch(filters: { columnName: string; query: string }[]): Pr
 }
 
     private entityTypeFullName: string | undefined;
+    private fieldTypeMap: Record<string, string> | undefined;
+
+    async getFieldTypeMap(): Promise<Record<string, string>> {
+        if (this.fieldTypeMap) return this.fieldTypeMap;
+
+        const url = `${this.context.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/fields?$select=InternalName,TypeAsString`;
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) {
+            throw new Error(`Failed to resolve list field types (status ${response.status})`);
+        }
+        const data = await response.json();
+        const map: Record<string, string> = {};
+        (data.value || []).forEach((field: any) => {
+            map[field.InternalName] = field.TypeAsString;
+        });
+
+        this.fieldTypeMap = map;
+        return map;
+    }
 
     private async getEntityTypeFullName(): Promise<string> {
         if (this.entityTypeFullName) return this.entityTypeFullName;
@@ -208,7 +227,7 @@ async handleStandardSearch(filters: { columnName: string; query: string }[]): Pr
         }
     }
 
-    async createItem(item: Record<string, string>): Promise<void> {
+    async createItem(item: Record<string, string | number | boolean>): Promise<void> {
         const entityType = await this.getEntityTypeFullName();
         const url = `${this.context.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items`;
         const body = JSON.stringify({ "__metadata": { type: entityType }, ...item });
@@ -228,7 +247,7 @@ async handleStandardSearch(filters: { columnName: string; query: string }[]): Pr
         }
     }
 
-    async bulkCreateItems(entries: { row: number; data: Record<string, string> }[]): Promise<{ success: number; failed: { row: number; error: string }[] }> {
+    async bulkCreateItems(entries: { row: number; data: Record<string, string | number | boolean> }[]): Promise<{ success: number; failed: { row: number; error: string }[] }> {
         const failed: { row: number; error: string }[] = [];
         let success = 0;
         const concurrency = 5;

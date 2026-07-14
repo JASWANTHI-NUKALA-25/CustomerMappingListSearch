@@ -33,6 +33,8 @@ const HEADER_TO_KEY: Record<string, string> = columnsConfig.reduce((map, col) =>
 
 const EXPECTED_HEADERS = columnsConfig.map(col => col.name);
 
+const isNumericFieldType = (fieldType?: string): boolean => fieldType === "Number" || fieldType === "Currency";
+
 class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUploadState> {
     private searchService: SearchService;
     private fileInputRef = React.createRef<HTMLInputElement>();
@@ -89,18 +91,37 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
             const dataRows = rows.slice(1).filter(row => row.some(cell => (cell ?? "").toString().trim() !== ""));
             if (dataRows.length === 0) throw new Error("No data rows found in the uploaded file.");
 
-            const entries: { row: number; data: Record<string, string> }[] = [];
+            const fieldTypes = await this.searchService.getFieldTypeMap();
+
+            const entries: { row: number; data: Record<string, string | number> }[] = [];
             const rowErrors: string[] = [];
 
             dataRows.forEach((row, idx) => {
                 const excelRowNumber = idx + 2; // header is row 1
-                const item: Record<string, string> = {};
+                const item: Record<string, string | number> = {};
+                let rowHasError = false;
+
                 headerRow.forEach((header, colIdx) => {
                     const key = header ? HEADER_TO_KEY[header.toLowerCase()] : undefined;
-                    if (key) {
-                        item[key] = (row[colIdx] ?? "").toString().trim();
+                    if (!key) return;
+
+                    const rawValue = (row[colIdx] ?? "").toString().trim();
+                    if (rawValue === "") return;
+
+                    if (isNumericFieldType(fieldTypes[key])) {
+                        const numericValue = Number(rawValue.replace(/,/g, ""));
+                        if (isNaN(numericValue)) {
+                            rowErrors.push(`Row ${excelRowNumber}: "${header}" must be a number (got "${rawValue}").`);
+                            rowHasError = true;
+                        } else {
+                            item[key] = numericValue;
+                        }
+                    } else {
+                        item[key] = rawValue;
                     }
                 });
+
+                if (rowHasError) return;
 
                 if (!item["Title"] || !item["field_1"]) {
                     rowErrors.push(`Row ${excelRowNumber}: Customer Name and Customer ID are required.`);
