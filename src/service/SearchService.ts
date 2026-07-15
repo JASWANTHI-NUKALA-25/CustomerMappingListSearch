@@ -196,7 +196,8 @@ export class SearchService {
             const errorText = await response.text();
             // eslint-disable-next-line no-console
             console.error("CustomerMapping item creation failed", { item, entityType, errorText });
-            throw new Error(this.extractErrorMessage(errorText) || `Request failed with status ${response.status}`);
+            const message = this.extractErrorMessage(errorText) || `Request failed with status ${response.status}`;
+            throw new Error(`${message} (payload: ${JSON.stringify(item)})`);
         }
     }
 
