@@ -109,7 +109,6 @@ export class SearchService {
     }
 
     private entityTypeFullName: string | undefined;
-    private requestDigest: string | undefined;
 
     private async getEntityTypeFullName(): Promise<string> {
         if (this.entityTypeFullName) return this.entityTypeFullName;
@@ -128,27 +127,6 @@ export class SearchService {
         return entityType;
     }
 
-    /** SPHttpClient only auto-manages the digest for the *current* web, so when the list lives on a
-     *  different site than the one hosting the webpart, a fresh digest for that site must be fetched explicitly. */
-    private async getRequestDigest(): Promise<string> {
-        if (this.requestDigest) return this.requestDigest;
-
-        const url = `${this.siteUrl}/_api/contextinfo`;
-        const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
-            headers: { "Accept": "application/json;odata=verbose" }
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to get request digest (status ${response.status})`);
-        }
-        const data = await response.json();
-        const digest: string | undefined = data?.d?.GetContextWebInformation?.FormDigestValue;
-        if (!digest) {
-            throw new Error("Could not resolve request digest for the target site");
-        }
-        this.requestDigest = digest;
-        return digest;
-    }
-
     private extractErrorMessage(errorText: string): string {
         try {
             const parsed = JSON.parse(errorText);
@@ -159,7 +137,7 @@ export class SearchService {
     }
 
     async createItem(item: Record<string, string | number | boolean>): Promise<void> {
-        const [entityType, digest] = await Promise.all([this.getEntityTypeFullName(), this.getRequestDigest()]);
+        const entityType = await this.getEntityTypeFullName();
         const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items`;
         const body = JSON.stringify({ "__metadata": { type: entityType }, ...item });
 
@@ -167,8 +145,7 @@ export class SearchService {
             headers: {
                 "Accept": "application/json;odata=verbose",
                 "Content-type": "application/json;odata=verbose",
-                "odata-version": "",
-                "X-RequestDigest": digest
+                "odata-version": ""
             },
             body
         });
