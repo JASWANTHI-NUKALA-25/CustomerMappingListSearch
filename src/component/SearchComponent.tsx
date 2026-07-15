@@ -4,6 +4,7 @@ import * as React from "react";
 import {
     Dropdown,
     IDropdownOption,
+    IColumn,
     TextField,
     PrimaryButton,
     DetailsList,
@@ -24,7 +25,6 @@ import {
 } from "@fluentui/react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { SearchService } from "../service/SearchService";
-import { columnsConfig } from "../constants/ColumnsConfig";
 import { IListColumn } from "../interfaces/IListColumn";
 import { ISearchResults } from "../interfaces/ISearchResults.ts";
 import ExcelUploadComponent from "./ExcelUploadComponent";
@@ -32,6 +32,7 @@ import ExcelUploadComponent from "./ExcelUploadComponent";
 
 interface ISearchState {
     columns: IListColumn[];
+    resultColumns: IColumn[];
     selectedColumn: string;
     rows: { columnKey: string, query: string }[]; // Dynamic rows with selected column and query
     results: ISearchResults[];
@@ -42,6 +43,7 @@ interface ISearchState {
 interface ISearchProps {
     context: WebPartContext;
     listName: string;
+    siteUrl: string;
 }
 
 class SearchComponent extends React.Component<ISearchProps, ISearchState> {
@@ -49,10 +51,11 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
 
     constructor(props: ISearchProps) {
         super(props);
-        this.searchService = new SearchService(props.context, props.listName);
+        this.searchService = new SearchService(props.context, props.listName, props.siteUrl);
 
         this.state = {
             columns: [],
+            resultColumns: [],
             selectedColumn: "",
             rows: [{ columnKey: "", query: "" }], // Initially one row
             results: [],
@@ -63,8 +66,18 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
 
     async componentDidMount() {
         try {
-            const columns = await this.searchService.loadColumns();
-            this.setState({ columns });
+            const [columns, allFields] = await Promise.all([
+                this.searchService.loadColumns(),
+                this.searchService.getListFields()
+            ]);
+            const resultColumns: IColumn[] = allFields.map(f => ({
+                key: f.key,
+                name: f.text,
+                fieldName: f.key,
+                minWidth: 100,
+                isResizable: true
+            }));
+            this.setState({ columns, resultColumns });
         } catch (error) {
             this.setState({ error: error.message });
         }
@@ -195,31 +208,7 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
     };
 
     render() {
-        const { columns, rows, results, loading, error } = this.state;
-        const columnsWithAction = columnsConfig.map((column) => {
-            if (column.key === "approvalDetails") {
-                return {
-                    ...column,
-                    onRender: (item: ISearchResults) => {
-                        // Construct the SharePoint list URL with filters
-                        const siteUrl = this.props.context.pageContext.web.absoluteUrl;
-                        //const listName = encodeURIComponent(this.props.listName);
-                        const listName = "ASDMSapprovals"
-                        const titleFilter = encodeURIComponent(item.Title);
-
-                        //const listUrl = `${siteUrl}/Lists/${listName}/AllItems.aspx?FilterField1=LinkTitle&FilterValue1=${titleFilter}&FilterType1=Computed`;
-                        const listUrl = `${siteUrl}/Lists/${listName}/AllItems.aspx?FilterField1=LinkTitle&FilterValue1=${titleFilter}&FilterType1=Computed&FilterField2=Status&FilterValue2=Pending`;
-                        return (
-                            <PrimaryButton
-                                text="Approval Details"
-                                onClick={() => window.open(listUrl, "_blank")}
-                            />
-                        );
-                    },
-                };
-            }
-            return column;
-        });
+        const { columns, resultColumns, rows, results, loading, error } = this.state;
 
         const cardStyle: React.CSSProperties = {
             maxWidth: 1200,
@@ -244,6 +233,7 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
                     <ExcelUploadComponent
                         context={this.props.context}
                         listName={this.props.listName}
+                        siteUrl={this.props.siteUrl}
                     />
 
                     <Separator styles={{ root: { margin: "16px 0" } }} />
@@ -330,7 +320,7 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
                             <ScrollablePane scrollbarVisibility={ScrollbarVisibility.auto}>
                                 <DetailsList
                                     items={results}
-                                    columns={columnsWithAction}
+                                    columns={resultColumns}
                                     isHeaderVisible={true}
                                     layoutMode={DetailsListLayoutMode.fixedColumns}
                                     onRenderDetailsHeader={this.onRenderDetailsHeader}

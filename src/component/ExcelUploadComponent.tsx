@@ -13,11 +13,11 @@ import {
 } from "@fluentui/react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { SearchService } from "../service/SearchService";
-import { columnsConfig } from "../constants/ColumnsConfig";
 
 interface IExcelUploadProps {
     context: WebPartContext;
     listName: string;
+    siteUrl: string;
     onUploadComplete?: () => void;
 }
 
@@ -26,12 +26,7 @@ interface IExcelUploadState {
     message: { type: MessageBarType; text: string } | null;
 }
 
-const HEADER_TO_KEY: Record<string, string> = columnsConfig.reduce((map, col) => {
-    map[col.name.trim().toLowerCase()] = (col.fieldName as string) || (col.key as string);
-    return map;
-}, {} as Record<string, string>);
-
-const EXPECTED_HEADERS = columnsConfig.map(col => col.name);
+const CUSTOMER_ID_DISPLAY_NAME = "erp customer id";
 
 const isNumericFieldType = (fieldType?: string): boolean => fieldType === "Number" || fieldType === "Currency";
 
@@ -41,7 +36,7 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
 
     constructor(props: IExcelUploadProps) {
         super(props);
-        this.searchService = new SearchService(props.context, props.listName);
+        this.searchService = new SearchService(props.context, props.listName, props.siteUrl);
         this.state = { uploading: false, message: null };
     }
 
@@ -51,11 +46,17 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
         }
     };
 
-    private handleDownloadTemplate = (): void => {
-        const worksheet = XLSX.utils.aoa_to_sheet([EXPECTED_HEADERS]);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "CustomerMapping");
-        XLSX.writeFile(workbook, "CustomerMapping_Template.xlsx");
+    private handleDownloadTemplate = async (): Promise<void> => {
+        try {
+            const fields = await this.searchService.getListFields();
+            const headers = fields.map(f => f.text);
+            const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, this.props.listName);
+            XLSX.writeFile(workbook, `${this.props.listName}_Template.xlsx`);
+        } catch (error) {
+            this.setState({ message: { type: MessageBarType.error, text: error.message } });
+        }
     };
 
     private handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -66,6 +67,18 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
         this.setState({ uploading: true, message: null });
 
         try {
+            const fields = await this.searchService.getListFields();
+            const customerIdField = fields.find(f => f.text.trim().toLowerCase() === CUSTOMER_ID_DISPLAY_NAME);
+            if (!customerIdField) {
+                throw new Error(`Could not find a "${CUSTOMER_ID_DISPLAY_NAME}" column on the list.`);
+            }
+
+            const headerToKey: Record<string, string> = {};
+            fields.forEach(f => { headerToKey[f.text.trim().toLowerCase()] = f.key; });
+            const expectedHeaders = fields.map(f => f.text);
+            const fieldTypes: Record<string, string> = {};
+            fields.forEach(f => { fieldTypes[f.key] = f.fieldType; });
+
             const buffer = await file.arrayBuffer();
             const workbook = XLSX.read(buffer, { type: "array" });
             const sheetName = workbook.SheetNames[0];
@@ -76,7 +89,7 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
             if (rows.length === 0) throw new Error("The uploaded file is empty.");
 
             const headerRow = (rows[0] || []).map((h: any) => (h || "").toString().trim());
-            const missingHeaders = EXPECTED_HEADERS.filter(
+            const missingHeaders = expectedHeaders.filter(
                 expected => !headerRow.some(h => h.toLowerCase() === expected.toLowerCase())
             );
 
@@ -86,12 +99,10 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
                 );
             }
 
-            const unrecognizedHeaders = headerRow.filter(h => h && !HEADER_TO_KEY[h.toLowerCase()]);
+            const unrecognizedHeaders = headerRow.filter(h => h && !headerToKey[h.toLowerCase()]);
 
             const dataRows = rows.slice(1).filter(row => row.some(cell => (cell ?? "").toString().trim() !== ""));
             if (dataRows.length === 0) throw new Error("No data rows found in the uploaded file.");
-
-            const fieldTypes = await this.searchService.getFieldTypeMap();
 
             const entries: { row: number; data: Record<string, string | number> }[] = [];
             const rowErrors: string[] = [];
@@ -102,7 +113,7 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
                 let rowHasError = false;
 
                 headerRow.forEach((header, colIdx) => {
-                    const key = header ? HEADER_TO_KEY[header.toLowerCase()] : undefined;
+                    const key = header ? headerToKey[header.toLowerCase()] : undefined;
                     if (!key) return;
 
                     const rawValue = (row[colIdx] ?? "").toString().trim();
@@ -123,7 +134,7 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
 
                 if (rowHasError) return;
 
-                if (!item["Title"] || !item["field_1"]) {
+                if (!item["Title"] || !item[customerIdField.key]) {
                     rowErrors.push(`Row ${excelRowNumber}: Customer Name and Customer ID are required.`);
                     return;
                 }
@@ -137,13 +148,23 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
             const result = await this.searchService.bulkCreateItems(entries);
             const allErrors = [...rowErrors, ...result.failed.map(f => `Row ${f.row}: ${f.error}`)];
 
+            if (allErrors.length > 0) {
+                // eslint-disable-next-line no-console
+                console.error(`CustomerMapping upload: ${allErrors.length} row(s) failed`, allErrors);
+            }
+
             const summary = `${result.success} of ${dataRows.length} record(s) uploaded successfully.`;
             const notes: string[] = [];
             if (unrecognizedHeaders.length > 0) {
                 notes.push(`Ignored unrecognized column(s): ${unrecognizedHeaders.join(", ")}.`);
             }
             if (allErrors.length > 0) {
-                notes.push(`${allErrors.length} row(s) failed: ${allErrors.join(" | ")}`);
+                const maxShown = 10;
+                const shown = allErrors.slice(0, maxShown).join(" | ");
+                const remainder = allErrors.length - maxShown;
+                notes.push(
+                    `${allErrors.length} row(s) failed: ${shown}${remainder > 0 ? ` (and ${remainder} more — see browser console for the full list)` : ""}`
+                );
             }
 
             this.setState({

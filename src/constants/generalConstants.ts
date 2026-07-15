@@ -1,3 +1,4 @@
 export const ListConstants = {
-    "Level1ListName": "Level1"
+    "SiteUrl": "https://centromotion.sharepoint.com/sites/Commercial",
+    "ListName": "CustomerMapping1"
 }
