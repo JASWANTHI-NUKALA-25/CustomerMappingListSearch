@@ -5,18 +5,24 @@ import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { IListColumn } from "../interfaces/IListColumn";
 import { ISearchResults } from "../interfaces/ISearchResults.ts";
 
-// Internal names that are system-managed metadata, not part of the customer mapping data itself.
-const SYSTEM_FIELD_KEYS = new Set([
-    "ID", "Created", "Modified", "Author", "Editor", "ContentType", "Attachments",
-    "Edit", "LinkTitle", "LinkTitleNoMenu", "ItemChildCount", "FolderChildCount",
-    "AppAuthor", "AppEditor", "_ComplianceAssetId", "WorkflowVersion", "GUID", "Order",
-    "FileSystemObjectType", "FileRef", "FileDirRef", "MetaInfo", "_ModerationComments",
-    "_ModerationStatus", "InstanceID", "OData__ColorTag", "OData__CopySource",
-    "SortBehavior", "ParentVersionString", "ParentLeafName", "OData__UIVersionString",
-    "SyncClientId", "TemplateUrl", "owshiddenversion"
-]);
-
-const CUSTOMER_ID_DISPLAY_NAME = "erp customer id";
+// Matches the CustomerMapping1 list schema exactly (confirmed via List Settings > columns).
+const LIST_FIELDS: IListColumn[] = [
+    { key: "Title", text: "Customer Name", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+    { key: "field_1", text: "Customer ID", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+    { key: "field_2", text: "Region", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+    { key: "field_3", text: "Americas Lead", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+    { key: "field_4", text: "Americas Director", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+    { key: "field_5", text: "Americas G/KAM", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+    { key: "field_6", text: "Americas Sales Agent", fieldType: "Text", lookupListId: undefined, lookupField: undefined },
+    { key: "field_7", text: "EMEA Lead", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
+    { key: "field_8", text: "EMEA Director", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
+    { key: "field_9", text: "EMEA G/KAM", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
+    { key: "field_10", text: "EMEA Sales Agent", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
+    { key: "field_11", text: "APAC Lead", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
+    { key: "field_12", text: "APAC Director", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
+    { key: "field_13", text: "APAC G/KAM", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
+    { key: "field_14", text: "APAC Sales Agent", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
+];
 
 export class SearchService {
     private context: WebPartContext;
@@ -29,40 +35,15 @@ export class SearchService {
         this.siteUrl = siteUrl || context.pageContext.web.absoluteUrl;
     }
 
-    private listFields: IListColumn[] | undefined;
-
-    /** Discovers the list's real (non-system) columns directly from SharePoint - no hardcoded field names. */
+    /** Returns the CustomerMapping1 list's known columns (hardcoded - see LIST_FIELDS above). */
     async getListFields(): Promise<IListColumn[]> {
-        if (this.listFields) return this.listFields;
-
-        const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/fields?$filter=Hidden eq false and ReadOnlyField eq false&$select=InternalName,Title,TypeAsString`;
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-        if (!response.ok) {
-            throw new Error(`Failed to load list columns (status ${response.status})`);
-        }
-        const data = await response.json();
-
-        const fields: IListColumn[] = (data.value || [])
-            .filter((f: any) => !SYSTEM_FIELD_KEYS.has(f.InternalName))
-            .map((f: any) => ({
-                key: f.InternalName,
-                text: f.Title,
-                fieldType: f.TypeAsString,
-                lookupListId: undefined,
-                lookupField: undefined
-            }));
-
-        // eslint-disable-next-line no-console
-        console.log(`CustomerMapping list fields for '${this.listName}'`, fields);
-
-        this.listFields = fields;
-        return fields;
+        return LIST_FIELDS;
     }
 
     /** Columns offered in the search dropdown: Customer Name and Customer ID only. */
     async loadColumns(): Promise<IListColumn[]> {
         const fields = await this.getListFields();
-        return fields.filter(f => f.key === "Title" || f.text.trim().toLowerCase() === CUSTOMER_ID_DISPLAY_NAME);
+        return fields.filter(f => f.key === "Title" || f.key === "field_1");
     }
 
     async getFieldTypeMap(): Promise<Record<string, string>> {

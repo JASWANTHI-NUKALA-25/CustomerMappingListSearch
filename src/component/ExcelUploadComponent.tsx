@@ -26,7 +26,7 @@ interface IExcelUploadState {
     message: { type: MessageBarType; text: string } | null;
 }
 
-const CUSTOMER_ID_DISPLAY_NAME = "erp customer id";
+const CUSTOMER_ID_DISPLAY_NAME = "customer id";
 
 const isNumericFieldType = (fieldType?: string): boolean => fieldType === "Number" || fieldType === "Currency";
 
