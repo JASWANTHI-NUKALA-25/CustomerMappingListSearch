@@ -9,7 +9,10 @@ import {
     Spinner,
     SpinnerSize,
     Stack,
-    Text
+    Text,
+    Dialog,
+    DialogType,
+    DialogFooter
 } from "@fluentui/react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
 import { SearchService } from "../service/SearchService";
@@ -21,9 +24,17 @@ interface IExcelUploadProps {
     onUploadComplete?: () => void;
 }
 
+interface IPendingUpload {
+    entries: { row: number; data: Record<string, string | number> }[];
+    rowErrors: string[];
+    unrecognizedHeaders: string[];
+    totalDataRows: number;
+}
+
 interface IExcelUploadState {
     uploading: boolean;
     message: { type: MessageBarType; text: string } | null;
+    pendingUpload: IPendingUpload | null;
 }
 
 const CUSTOMER_ID_DISPLAY_NAME = "customer id";
@@ -37,7 +48,7 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
     constructor(props: IExcelUploadProps) {
         super(props);
         this.searchService = new SearchService(props.context, props.listName, props.siteUrl);
-        this.state = { uploading: false, message: null };
+        this.state = { uploading: false, message: null, pendingUpload: null };
     }
 
     private triggerFileSelect = (): void => {
@@ -145,6 +156,29 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
                 throw new Error(`No valid rows to upload. ${rowErrors.join(" ")}`);
             }
 
+            // Hold off on touching SharePoint until the user confirms the replace-all-data action.
+            this.setState({
+                uploading: false,
+                pendingUpload: { entries, rowErrors, unrecognizedHeaders, totalDataRows: dataRows.length }
+            });
+        } catch (error) {
+            this.setState({ uploading: false, message: { type: MessageBarType.error, text: error.message } });
+        }
+    };
+
+    private cancelReplace = (): void => {
+        this.setState({ pendingUpload: null });
+    };
+
+    private confirmReplace = async (): Promise<void> => {
+        const { pendingUpload } = this.state;
+        if (!pendingUpload) return;
+        const { entries, rowErrors, unrecognizedHeaders, totalDataRows } = pendingUpload;
+
+        this.setState({ uploading: true, message: null, pendingUpload: null });
+
+        try {
+            const deleteResult = await this.searchService.deleteAllItems();
             const result = await this.searchService.bulkCreateItems(entries);
             const allErrors = [...rowErrors, ...result.failed.map(f => `Row ${f.row}: ${f.error}`)];
 
@@ -153,8 +187,11 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
                 console.error(`CustomerMapping upload: ${allErrors.length} row(s) failed`, allErrors);
             }
 
-            const summary = `${result.success} of ${dataRows.length} record(s) uploaded successfully.`;
+            const summary = `Cleared ${deleteResult.deleted} existing record(s). ${result.success} of ${totalDataRows} new record(s) uploaded successfully.`;
             const notes: string[] = [];
+            if (deleteResult.failed > 0) {
+                notes.push(`${deleteResult.failed} existing record(s) could not be deleted — see browser console.`);
+            }
             if (unrecognizedHeaders.length > 0) {
                 notes.push(`Ignored unrecognized column(s): ${unrecognizedHeaders.join(", ")}.`);
             }
@@ -170,7 +207,9 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
             this.setState({
                 uploading: false,
                 message: {
-                    type: allErrors.length > 0 ? (result.success > 0 ? MessageBarType.warning : MessageBarType.error) : MessageBarType.success,
+                    type: (allErrors.length > 0 || deleteResult.failed > 0)
+                        ? (result.success > 0 ? MessageBarType.warning : MessageBarType.error)
+                        : MessageBarType.success,
                     text: [summary, ...notes].join(" ")
                 }
             });
@@ -184,7 +223,7 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
     };
 
     render(): React.ReactElement {
-        const { uploading, message } = this.state;
+        const { uploading, message, pendingUpload } = this.state;
         return (
             <Stack tokens={{ childrenGap: 8 }}>
                 <Stack horizontal wrap verticalAlign="center" tokens={{ childrenGap: 10 }}>
@@ -207,7 +246,7 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
                         onClick={this.handleDownloadTemplate}
                         disabled={uploading}
                     />
-                    {uploading && <Spinner size={SpinnerSize.small} label="Processing file..." />}
+                    {uploading && <Spinner size={SpinnerSize.small} label="Processing..." />}
                 </Stack>
                 {message && (
                     <MessageBar
@@ -219,6 +258,23 @@ class ExcelUploadComponent extends React.Component<IExcelUploadProps, IExcelUplo
                         <Text>{message.text}</Text>
                     </MessageBar>
                 )}
+
+                <Dialog
+                    hidden={!pendingUpload}
+                    onDismiss={this.cancelReplace}
+                    dialogContentProps={{
+                        type: DialogType.normal,
+                        title: "Replace all existing data?",
+                        subText: pendingUpload
+                            ? `This will permanently delete every existing record in "${this.props.listName}" and replace it with the ${pendingUpload.entries.length} valid record(s) from your file. This cannot be undone. Continue?`
+                            : undefined
+                    }}
+                >
+                    <DialogFooter>
+                        <PrimaryButton text="Replace All Data" onClick={this.confirmReplace} />
+                        <DefaultButton text="Cancel" onClick={this.cancelReplace} />
+                    </DialogFooter>
+                </Dialog>
             </Stack>
         );
     }

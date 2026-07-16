@@ -136,6 +136,64 @@ export class SearchService {
         }
     }
 
+    async getAllItemIds(): Promise<number[]> {
+        const ids: number[] = [];
+        let url: string | undefined = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items?$select=Id&$top=5000`;
+
+        while (url) {
+            const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+            if (!response.ok) {
+                throw new Error(`Failed to load existing items (status ${response.status})`);
+            }
+            const data = await response.json();
+            (data.value || []).forEach((item: any) => ids.push(item.Id));
+            url = data["odata.nextLink"] || data.d?.__next || undefined;
+        }
+
+        return ids;
+    }
+
+    private async deleteItem(id: number): Promise<void> {
+        const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items(${id})`;
+        const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+            headers: {
+                "Accept": "application/json;odata=verbose",
+                "IF-MATCH": "*",
+                "X-HTTP-Method": "DELETE"
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(this.extractErrorMessage(errorText) || `Delete failed with status ${response.status}`);
+        }
+    }
+
+    async deleteAllItems(): Promise<{ deleted: number; failed: number }> {
+        const ids = await this.getAllItemIds();
+        let deleted = 0;
+        let failed = 0;
+        const concurrency = 5;
+
+        for (let i = 0; i < ids.length; i += concurrency) {
+            const chunk = ids.slice(i, i + concurrency);
+            const outcomes = await Promise.all(
+                chunk.map(id =>
+                    this.deleteItem(id)
+                        .then(() => true)
+                        .catch(err => {
+                            // eslint-disable-next-line no-console
+                            console.error(`CustomerMapping: failed to delete item ${id}`, err);
+                            return false;
+                        })
+                )
+            );
+            outcomes.forEach(ok => (ok ? deleted++ : failed++));
+        }
+
+        return { deleted, failed };
+    }
+
     async createItem(item: Record<string, string | number | boolean>): Promise<void> {
         const entityType = await this.getEntityTypeFullName();
         const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items`;
