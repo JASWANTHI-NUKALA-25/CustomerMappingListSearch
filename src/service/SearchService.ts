@@ -141,11 +141,11 @@ export class SearchService {
         let url: string | undefined = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items?$select=Id&$top=5000`;
 
         while (url) {
-            const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+            const response: SPHttpClientResponse = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
             if (!response.ok) {
                 throw new Error(`Failed to load existing items (status ${response.status})`);
             }
-            const data = await response.json();
+            const data: any = await response.json();
             (data.value || []).forEach((item: any) => ids.push(item.Id));
             url = data["odata.nextLink"] || data.d?.__next || undefined;
         }

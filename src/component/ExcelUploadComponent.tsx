@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @rushstack/no-new-null */
 import * as React from "react";
 import * as XLSX from "xlsx";
 import {
