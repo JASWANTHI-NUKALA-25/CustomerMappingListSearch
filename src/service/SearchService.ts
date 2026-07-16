@@ -24,6 +24,8 @@ const LIST_FIELDS: IListColumn[] = [
     { key: "field_14", text: "APAC Sales Agent", fieldType: "Number", lookupListId: undefined, lookupField: undefined },
 ];
 
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
 export class SearchService {
     private context: WebPartContext;
     private listName: string;
@@ -33,6 +35,22 @@ export class SearchService {
         this.context = context;
         this.listName = listName;
         this.siteUrl = siteUrl || context.pageContext.web.absoluteUrl;
+    }
+
+    /** Retries transient failures (SharePoint throttling, etc.) with exponential backoff. */
+    private async withRetry<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+        let lastError: any;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return await fn();
+            } catch (err) {
+                lastError = err;
+                if (attempt < maxAttempts) {
+                    await sleep(500 * Math.pow(2, attempt - 1));
+                }
+            }
+        }
+        throw lastError;
     }
 
     /** Returns the CustomerMapping1 list's known columns (hardcoded - see LIST_FIELDS above). */
@@ -113,16 +131,20 @@ export class SearchService {
     private async getEntityTypeFullName(): Promise<string> {
         if (this.entityTypeFullName) return this.entityTypeFullName;
 
-        const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')?$select=ListItemEntityTypeFullName`;
-        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-        if (!response.ok) {
-            throw new Error(`Failed to resolve list metadata (status ${response.status})`);
-        }
-        const data = await response.json();
-        const entityType: string | undefined = data.ListItemEntityTypeFullName;
-        if (!entityType) {
-            throw new Error("Could not resolve the list's entity type");
-        }
+        const entityType = await this.withRetry(async () => {
+            const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')?$select=ListItemEntityTypeFullName`;
+            const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+            if (!response.ok) {
+                throw new Error(`Failed to resolve list metadata (status ${response.status})`);
+            }
+            const data = await response.json();
+            const value: string | undefined = data.ListItemEntityTypeFullName;
+            if (!value) {
+                throw new Error("Could not resolve the list's entity type");
+            }
+            return value;
+        });
+
         this.entityTypeFullName = entityType;
         return entityType;
     }
@@ -154,26 +176,28 @@ export class SearchService {
     }
 
     private async deleteItem(id: number): Promise<void> {
-        const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items(${id})`;
-        const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
-            headers: {
-                "Accept": "application/json;odata=verbose",
-                "IF-MATCH": "*",
-                "X-HTTP-Method": "DELETE"
+        await this.withRetry(async () => {
+            const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items(${id})`;
+            const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+                headers: {
+                    "Accept": "application/json;odata=verbose",
+                    "IF-MATCH": "*",
+                    "X-HTTP-Method": "DELETE"
+                }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(this.extractErrorMessage(errorText) || `Delete failed with status ${response.status}`);
             }
         });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(this.extractErrorMessage(errorText) || `Delete failed with status ${response.status}`);
-        }
     }
 
     async deleteAllItems(): Promise<{ deleted: number; failed: number }> {
         const ids = await this.getAllItemIds();
         let deleted = 0;
         let failed = 0;
-        const concurrency = 5;
+        const concurrency = 3;
 
         for (let i = 0; i < ids.length; i += concurrency) {
             const chunk = ids.slice(i, i + concurrency);
@@ -189,38 +213,43 @@ export class SearchService {
                 )
             );
             outcomes.forEach(ok => (ok ? deleted++ : failed++));
+            if (i + concurrency < ids.length) {
+                await sleep(250);
+            }
         }
 
         return { deleted, failed };
     }
 
     async createItem(item: Record<string, string | number | boolean>): Promise<void> {
-        const entityType = await this.getEntityTypeFullName();
-        const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items`;
-        const body = JSON.stringify({ "__metadata": { type: entityType }, ...item });
+        await this.withRetry(async () => {
+            const entityType = await this.getEntityTypeFullName();
+            const url = `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(this.listName)}')/items`;
+            const body = JSON.stringify({ "__metadata": { type: entityType }, ...item });
 
-        const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
-            headers: {
-                "Accept": "application/json;odata=verbose",
-                "Content-type": "application/json;odata=verbose",
-                "odata-version": ""
-            },
-            body
+            const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+                headers: {
+                    "Accept": "application/json;odata=verbose",
+                    "Content-type": "application/json;odata=verbose",
+                    "odata-version": ""
+                },
+                body
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                // eslint-disable-next-line no-console
+                console.error("CustomerMapping item creation failed", { item, entityType, errorText });
+                const message = this.extractErrorMessage(errorText) || `Request failed with status ${response.status}`;
+                throw new Error(`${message} (payload: ${JSON.stringify(item)})`);
+            }
         });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            // eslint-disable-next-line no-console
-            console.error("CustomerMapping item creation failed", { item, entityType, errorText });
-            const message = this.extractErrorMessage(errorText) || `Request failed with status ${response.status}`;
-            throw new Error(`${message} (payload: ${JSON.stringify(item)})`);
-        }
     }
 
     async bulkCreateItems(entries: { row: number; data: Record<string, string | number | boolean> }[]): Promise<{ success: number; failed: { row: number; error: string }[] }> {
         const failed: { row: number; error: string }[] = [];
         let success = 0;
-        const concurrency = 5;
+        const concurrency = 3;
 
         for (let i = 0; i < entries.length; i += concurrency) {
             const chunk = entries.slice(i, i + concurrency);
@@ -239,6 +268,10 @@ export class SearchService {
                     failed.push({ row: outcome.row, error: outcome.error });
                 }
             });
+
+            if (i + concurrency < entries.length) {
+                await sleep(250);
+            }
         }
 
         return { success, failed };

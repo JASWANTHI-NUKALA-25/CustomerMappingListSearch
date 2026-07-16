@@ -24,6 +24,7 @@ import {
     StickyPositionType
 } from "@fluentui/react";
 import { WebPartContext } from "@microsoft/sp-webpart-base";
+import { SPPermission } from "@microsoft/sp-page-context";
 import { SearchService } from "../service/SearchService";
 import { IListColumn } from "../interfaces/IListColumn";
 import { ISearchResults } from "../interfaces/ISearchResults.ts";
@@ -48,10 +49,12 @@ interface ISearchProps {
 
 class SearchComponent extends React.Component<ISearchProps, ISearchState> {
     private searchService: SearchService;
+    private isSiteOwner: boolean;
 
     constructor(props: ISearchProps) {
         super(props);
         this.searchService = new SearchService(props.context, props.listName, props.siteUrl);
+        this.isSiteOwner = props.context.pageContext.web.permissions.hasPermission(SPPermission.manageWeb);
 
         this.state = {
             columns: [],
@@ -226,17 +229,22 @@ class SearchComponent extends React.Component<ISearchProps, ISearchState> {
                         Customer Mapping List Search
                     </Text>
                     <Text variant="medium" block styles={{ root: { color: "#605e5c", marginBottom: 16 } }}>
-                        Search existing customer mapping records or bulk-upload new ones from Excel.
+                        {this.isSiteOwner
+                            ? "Search existing customer mapping records or bulk-upload new ones from Excel."
+                            : "Search existing customer mapping records."}
                     </Text>
 
-                    {/* Excel Upload */}
-                    <ExcelUploadComponent
-                        context={this.props.context}
-                        listName={this.props.listName}
-                        siteUrl={this.props.siteUrl}
-                    />
-
-                    <Separator styles={{ root: { margin: "16px 0" } }} />
+                    {/* Excel Upload - site owners only */}
+                    {this.isSiteOwner && (
+                        <>
+                            <ExcelUploadComponent
+                                context={this.props.context}
+                                listName={this.props.listName}
+                                siteUrl={this.props.siteUrl}
+                            />
+                            <Separator styles={{ root: { margin: "16px 0" } }} />
+                        </>
+                    )}
 
                     {/* Search Filters */}
                     <Stack tokens={{ childrenGap: 12 }}>
